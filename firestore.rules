@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Employer account doc — plan & credits are written ONLY by Cloud Functions
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(['plan', 'credits', 'stripeCustomerId']);
+      allow update: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['plan', 'credits', 'stripeCustomerId']);
+
+      // Unlock records — created only by the unlockCandidate Cloud Function
+      match /unlocks/{pid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+
+    // Public candidate profile — anonymous fields only, readable by any signed-in user
+    match /profiles/{pid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == pid;
+
+      // Private identity — THE PAYWALL. Readable only by:
+      //  1. the candidate themself,
+      //  2. an employer who unlocked this candidate,
+      //  3. an employer on growth/enterprise (unlimited plans).
+      match /private/contact {
+        allow read: if request.auth != null && (
+          request.auth.uid == pid
+          || exists(/databases/$(database)/documents/users/$(request.auth.uid)/unlocks/$(pid))
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.plan in ['growth', 'enterprise']
+        );
+        allow write: if request.auth != null && request.auth.uid == pid;
+      }
+    }
+  }
+}
