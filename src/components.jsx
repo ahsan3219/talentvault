@@ -174,6 +174,7 @@ export function MonitorCard({ c, unlocked, contact, onUnlock, shortlisted, toggl
             {displayName}{c.verified && <Verified />}
           </div>
           <div style={{ fontFamily: font.body, fontSize: 13.5, color: T.inkSoft }}>{c.headline}</div>
+          {c.professionalRole && <div style={{ fontFamily: font.mono, fontSize: 10.5, color: T.amberDark, marginTop: 3 }}>{String(c.professionalRole).toUpperCase()}</div>}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {(c.skills || []).slice(0, 3).map((s) => (
