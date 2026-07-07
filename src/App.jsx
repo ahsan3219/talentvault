@@ -62,27 +62,24 @@ const MEDIA_REQUIREMENTS = {
   ],
 };
 
-const OTHER_ROLE = "Other";
-
 const PROFESSIONAL_ROLES = [
   ...MEDIA_REQUIREMENTS.audio,
   ...MEDIA_REQUIREMENTS.video,
   ...MEDIA_REQUIREMENTS.both,
-  OTHER_ROLE,
 ];
 
 const mediaRequirementFor = (role) => {
   if (MEDIA_REQUIREMENTS.both.includes(role)) return "both";
   if (MEDIA_REQUIREMENTS.audio.includes(role)) return "audio";
   if (MEDIA_REQUIREMENTS.video.includes(role)) return "video";
-  return "optional";
+  return "either";
 };
 
 const mediaRequirementLabel = (requirement) => ({
   audio: "audio upload required",
   video: "video upload required",
   both: "audio + video uploads required",
-  optional: "audio and video uploads optional",
+  either: "audio or video upload required",
 }[requirement]);
 
 export default function App() {
@@ -103,7 +100,7 @@ export default function App() {
 
   const [step, setStep] = useState(0);
   const [p, setP] = useState({
-    name: "", email: "", phone: "", headline: "", professionalRole: "", otherPosition: "", skills: "", salary: "", availability: "", languages: "",
+    name: "", email: "", phone: "", headline: "", professionalRole: "", skills: "", salary: "", availability: "", languages: "",
     neighbourhood: "", city: "", province: "", country: "",
     resumeFile: null, portfolioFile: null, portfolioLink: "",
     voice: null, video: null,      // { url, blob }
@@ -147,10 +144,10 @@ export default function App() {
       ? [p.voice]
       : mediaRequirement === "video"
         ? [p.video]
-        : [];
+        : [p.voice || p.video];
 
   const completeness = (() => {
-    const checks = [p.name, validEmail(p.email), p.phone, p.headline, p.professionalRole, p.professionalRole !== OTHER_ROLE || p.otherPosition, p.neighbourhood, p.city, p.country, p.resumeFile, ...requiredMediaChecks];
+    const checks = [p.name, validEmail(p.email), p.phone, p.headline, p.professionalRole, p.neighbourhood, p.city, p.country, p.resumeFile, ...requiredMediaChecks];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   })();
 
@@ -160,10 +157,10 @@ export default function App() {
   if (!p.phone) publishBlockers.push("phone");
   if (!p.city || !p.country) publishBlockers.push("city & country");
   if (!p.professionalRole) publishBlockers.push("professional role");
-  if (p.professionalRole === OTHER_ROLE && !p.otherPosition.trim()) publishBlockers.push("position");
   if (!p.resumeFile) publishBlockers.push("resume");
   if ((mediaRequirement === "audio" || mediaRequirement === "both") && !p.voice) publishBlockers.push("audio upload");
   if ((mediaRequirement === "video" || mediaRequirement === "both") && !p.video) publishBlockers.push("video upload");
+  if (mediaRequirement === "either" && !p.voice && !p.video) publishBlockers.push("voice or video");
   if (!p.consent) publishBlockers.push("privacy consent");
 
   const doPublish = async () => {
@@ -177,7 +174,7 @@ export default function App() {
       ]);
       const displayRole = p.professionalRole === OTHER_ROLE ? p.otherPosition.trim() : p.professionalRole;
       const pub = {
-        anonName: anon(p.name), verified: p.verified, headline: p.headline, professionalRole: displayRole, professionalRoleSelection: p.professionalRole, mediaRequirement,
+        anonName: anon(p.name), verified: p.verified, headline: p.headline, professionalRole: p.professionalRole, mediaRequirement,
         skills: p.skills.split(",").map((s) => s.trim()).filter(Boolean),
         neighbourhood: p.neighbourhood, city: p.city, province: p.province, country: p.country,
         usd: parseInt(String(p.salary).replace(/[^0-9]/g, ""), 10) || 0,
@@ -367,14 +364,11 @@ export default function App() {
                 <Field label="Headline" required value={p.headline} onChange={set("headline")} placeholder="e.g. Senior React Developer" />
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <Slate>Professional role<span style={{ color: T.rec }}> *</span></Slate>
-                  <select value={p.professionalRole} onChange={(e) => { set("professionalRole")(e.target.value); if (e.target.value !== OTHER_ROLE) set("otherPosition")(""); }}
-                    style={{ fontFamily: font.body, fontSize: 15, padding: "11px 13px", border: `1.5px solid ${T.line}`, borderRadius: 8, background: T.white, color: T.ink, outline: "none" }}>
-                    <option value="">Select your professional category</option>
-                    {PROFESSIONAL_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
-                  </select>
-                  {p.professionalRole === OTHER_ROLE && (
-                    <Field label="Specify position" required value={p.otherPosition} onChange={set("otherPosition")} placeholder="e.g. Backend Engineer" />
-                  )}
+                  <input list="professional-roles" value={p.professionalRole} placeholder="Select or type your closest role" onChange={(e) => set("professionalRole")(e.target.value)}
+                    style={{ fontFamily: font.body, fontSize: 15, padding: "11px 13px", border: `1.5px solid ${T.line}`, borderRadius: 8, background: T.white, color: T.ink, outline: "none" }} />
+                  <datalist id="professional-roles">
+                    {PROFESSIONAL_ROLES.map((role) => <option key={role} value={role} />)}
+                  </datalist>
                   <span style={{ fontFamily: font.body, fontSize: 12.5, color: T.inkSoft }}>Media rule: {mediaRequirementLabel(mediaRequirement)}.</span>
                 </div>
                 <Field label="Skills (comma separated)" value={p.skills} onChange={set("skills")} placeholder="React, Node.js, Figma" />
@@ -419,7 +413,7 @@ export default function App() {
                   <Field label="" value={p.portfolioLink} onChange={set("portfolioLink")} placeholder="or paste a link — behance.net/you" />
                 </div>
                 <div style={{ background: "rgba(232,162,61,.12)", border: `1px solid ${T.amber}`, borderRadius: 10, padding: 12, fontSize: 13.5, color: T.inkSoft }}>
-                  For <strong>{p.professionalRole === OTHER_ROLE ? (p.otherPosition || "your specified position") : (p.professionalRole || "your selected role")}</strong>, TalentVault marks <strong>{mediaRequirementLabel(mediaRequirement)}</strong> before publishing.
+                  For <strong>{p.professionalRole || "your selected role"}</strong>, TalentVault requires <strong>{mediaRequirementLabel(mediaRequirement)}</strong> before publishing.
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <Slate>Voice intro{(mediaRequirement === "audio" || mediaRequirement === "both") && <span style={{ color: T.rec }}> *</span>}</Slate>
@@ -437,7 +431,7 @@ export default function App() {
                 <div style={{ fontFamily: font.mono, fontSize: 12.5, lineHeight: 2, color: T.inkSoft, background: T.paper, borderRadius: 10, padding: 16 }}>
                   PUBLIC NAME — {p.name ? anon(p.name) : "—"} (full name unlocks after employer pays)<br />
                   HEADLINE — {p.headline || "—"}<br />
-                  PROFESSIONAL ROLE — {p.professionalRole === OTHER_ROLE ? (p.otherPosition || "—") : (p.professionalRole || "—")} ({mediaRequirementLabel(mediaRequirement)})<br />
+                  PROFESSIONAL ROLE — {p.professionalRole || "—"} ({mediaRequirementLabel(mediaRequirement)})<br />
                   CONTACT — hidden until unlock<br />
                   LOCATION — {[p.neighbourhood, p.city, p.province, p.country].filter(Boolean).join(", ") || "—"}<br />
                   RESUME — {p.resumeFile ? "✓ private until unlock" : "missing"}<br />
