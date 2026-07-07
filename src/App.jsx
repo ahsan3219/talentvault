@@ -9,6 +9,82 @@ import {
   unlockCandidate, startPhoneVerify,
 } from "./api-facade.js";
 
+const MEDIA_REQUIREMENTS = {
+  audio: [
+    "Customer Service & Telephone Sales",
+    "Call Center Agent (Inbound/Outbound)",
+    "Customer Support & Help Desk Representatives",
+    "Telemarketing & Telesales Executives",
+    "Phone-based Business Development Reps (BDRs) & Appointment Setters",
+    "Debt Collection Agents",
+    "Virtual Assistants (Voice-based) & Virtual Receptionists",
+    "Creative, Entertainment & Broadcast",
+    "Voice-Over & Dubbing Artists",
+    "Radio Jockeys (RJs) & Podcast Hosts",
+    "Audiobook Readers / Narrators",
+    "Singers / Vocalists",
+    "News Readers & Announcers",
+    "Foley Artists & Sound Designers",
+    "Language & AI Training Data",
+    "AI Voice Data Contributors",
+    "Simultaneous Interpreters & Translators",
+    "Language & English Tutors",
+  ],
+  video: [
+    "Visual Creators & Media Talent",
+    "Video Editors & Motion Designers",
+    "Content Creators, YouTubers, & Vloggers",
+    "Social Media Influencers & Brand Ambassadors",
+    "Actors & Models",
+    "News Anchors & On-Camera Journalists",
+    "High-Touch Client & Public-Facing Roles",
+    "Public Relations (PR) Specialists & Spokespersons",
+    "Account Managers & Client Service Executives",
+    "Real Estate, Insurance, & Financial Advisors",
+    "Lawyers & Legal Consultants",
+    "Hospitality & High-End Service",
+    "Cabin Crew & Flight Attendants",
+    "Luxury Hotel Front-Desk & Front-of-House Managers",
+    "Guest Relations Officers & Concierges",
+  ],
+  both: [
+    "Modern Digital Sales & Leadership",
+    "High-Ticket Sales (SDR/BDR/AE)",
+    "Senior Leadership (Startup Founders, Project/Product Managers, Team Leads)",
+    "Human Resources (Recruiters, Talent Acquisition Specialists)",
+    "Education, Training & Coaching",
+    "Corporate Trainers & Keynote Speakers",
+    "Online Tutors, Teachers, & Remote Educators",
+    "Career, Life, and Fitness Coaches",
+    "Telehealth & Healthcare",
+    "Telemedicine Doctors & Telehealth Nurses",
+    "Psychologists & Remote Counselors",
+  ],
+};
+
+const OTHER_ROLE = "Other";
+
+const PROFESSIONAL_ROLES = [
+  ...MEDIA_REQUIREMENTS.audio,
+  ...MEDIA_REQUIREMENTS.video,
+  ...MEDIA_REQUIREMENTS.both,
+  OTHER_ROLE,
+];
+
+const mediaRequirementFor = (role) => {
+  if (MEDIA_REQUIREMENTS.both.includes(role)) return "both";
+  if (MEDIA_REQUIREMENTS.audio.includes(role)) return "audio";
+  if (MEDIA_REQUIREMENTS.video.includes(role)) return "video";
+  return "optional";
+};
+
+const mediaRequirementLabel = (requirement) => ({
+  audio: "audio upload required",
+  video: "video upload required",
+  both: "audio + video uploads required",
+  optional: "audio and video uploads optional",
+}[requirement]);
+
 export default function App() {
   const [view, setView] = useState("landing");
   const [authFor, setAuthFor] = useState("candidate");
@@ -27,7 +103,7 @@ export default function App() {
 
   const [step, setStep] = useState(0);
   const [p, setP] = useState({
-    name: "", email: "", phone: "", headline: "", skills: "", salary: "", availability: "", languages: "",
+    name: "", email: "", phone: "", headline: "", professionalRole: "", otherPosition: "", skills: "", salary: "", availability: "", languages: "",
     neighbourhood: "", city: "", province: "", country: "",
     resumeFile: null, portfolioFile: null, portfolioLink: "",
     voice: null, video: null,      // { url, blob }
@@ -64,8 +140,17 @@ export default function App() {
   const plan = userDoc.plan || null;
   const credits = userDoc.credits ?? 0;
 
+  const mediaRequirement = mediaRequirementFor(p.professionalRole);
+  const requiredMediaChecks = mediaRequirement === "both"
+    ? [p.voice, p.video]
+    : mediaRequirement === "audio"
+      ? [p.voice]
+      : mediaRequirement === "video"
+        ? [p.video]
+        : [];
+
   const completeness = (() => {
-    const checks = [p.name, validEmail(p.email), p.phone, p.headline, p.neighbourhood, p.city, p.country, p.resumeFile, p.voice, p.video];
+    const checks = [p.name, validEmail(p.email), p.phone, p.headline, p.professionalRole, p.professionalRole !== OTHER_ROLE || p.otherPosition, p.neighbourhood, p.city, p.country, p.resumeFile, ...requiredMediaChecks];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   })();
 
@@ -74,8 +159,11 @@ export default function App() {
   if (!validEmail(p.email)) publishBlockers.push("valid email");
   if (!p.phone) publishBlockers.push("phone");
   if (!p.city || !p.country) publishBlockers.push("city & country");
+  if (!p.professionalRole) publishBlockers.push("professional role");
+  if (p.professionalRole === OTHER_ROLE && !p.otherPosition.trim()) publishBlockers.push("position");
   if (!p.resumeFile) publishBlockers.push("resume");
-  if (!p.voice && !p.video) publishBlockers.push("voice or video");
+  if ((mediaRequirement === "audio" || mediaRequirement === "both") && !p.voice) publishBlockers.push("audio upload");
+  if ((mediaRequirement === "video" || mediaRequirement === "both") && !p.video) publishBlockers.push("video upload");
   if (!p.consent) publishBlockers.push("privacy consent");
 
   const doPublish = async () => {
@@ -87,8 +175,9 @@ export default function App() {
         p.video?.blob ? uploadMedia(user.uid, "video", p.video.blob) : Promise.resolve(p.video?.url || null),
         p.resumeFile ? uploadMedia(user.uid, "resume", p.resumeFile) : Promise.resolve(null),
       ]);
+      const displayRole = p.professionalRole === OTHER_ROLE ? p.otherPosition.trim() : p.professionalRole;
       const pub = {
-        anonName: anon(p.name), verified: p.verified, headline: p.headline,
+        anonName: anon(p.name), verified: p.verified, headline: p.headline, professionalRole: displayRole, professionalRoleSelection: p.professionalRole, mediaRequirement,
         skills: p.skills.split(",").map((s) => s.trim()).filter(Boolean),
         neighbourhood: p.neighbourhood, city: p.city, province: p.province, country: p.country,
         usd: parseInt(String(p.salary).replace(/[^0-9]/g, ""), 10) || 0,
@@ -145,7 +234,7 @@ export default function App() {
   const withMine = profiles.map((c) => ({ ...c, mine: user && c.id === user.uid }));
   const countries = ["All", ...new Set(withMine.map((c) => c.country).filter(Boolean))];
   const filtered = withMine.sort(mineFirst).filter((c) => {
-    const hay = `${c.anonName} ${c.headline} ${(c.skills || []).join(" ")} ${c.city} ${c.neighbourhood} ${c.country}`.toLowerCase();
+    const hay = `${c.anonName} ${c.headline} ${c.professionalRole || ""} ${(c.skills || []).join(" ")} ${c.city} ${c.neighbourhood} ${c.country}`.toLowerCase();
     if (q && !hay.includes(q.toLowerCase())) return false;
     if (fCountry !== "All" && c.country !== fCountry) return false;
     if (fBand !== "All" && bandOf(c.usd || 0) !== fBand) return false;
@@ -276,6 +365,18 @@ export default function App() {
                   </div>
                 </div>
                 <Field label="Headline" required value={p.headline} onChange={set("headline")} placeholder="e.g. Senior React Developer" />
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <Slate>Professional role<span style={{ color: T.rec }}> *</span></Slate>
+                  <select value={p.professionalRole} onChange={(e) => { set("professionalRole")(e.target.value); if (e.target.value !== OTHER_ROLE) set("otherPosition")(""); }}
+                    style={{ fontFamily: font.body, fontSize: 15, padding: "11px 13px", border: `1.5px solid ${T.line}`, borderRadius: 8, background: T.white, color: T.ink, outline: "none" }}>
+                    <option value="">Select your professional category</option>
+                    {PROFESSIONAL_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
+                  </select>
+                  {p.professionalRole === OTHER_ROLE && (
+                    <Field label="Specify position" required value={p.otherPosition} onChange={set("otherPosition")} placeholder="e.g. Backend Engineer" />
+                  )}
+                  <span style={{ fontFamily: font.body, fontSize: 12.5, color: T.inkSoft }}>Media rule: {mediaRequirementLabel(mediaRequirement)}.</span>
+                </div>
                 <Field label="Skills (comma separated)" value={p.skills} onChange={set("skills")} placeholder="React, Node.js, Figma" />
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
                   <Field label="Expected salary (USD/mo)" value={p.salary} onChange={set("salary")} placeholder="e.g. 4000" />
@@ -317,8 +418,17 @@ export default function App() {
                   </label>
                   <Field label="" value={p.portfolioLink} onChange={set("portfolioLink")} placeholder="or paste a link — behance.net/you" />
                 </div>
-                <Recorder mode="voice" saved={p.voice?.url} onSave={set("voice")} />
-                <Recorder mode="video" saved={p.video?.url} onSave={set("video")} />
+                <div style={{ background: "rgba(232,162,61,.12)", border: `1px solid ${T.amber}`, borderRadius: 10, padding: 12, fontSize: 13.5, color: T.inkSoft }}>
+                  For <strong>{p.professionalRole === OTHER_ROLE ? (p.otherPosition || "your specified position") : (p.professionalRole || "your selected role")}</strong>, TalentVault marks <strong>{mediaRequirementLabel(mediaRequirement)}</strong> before publishing.
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <Slate>Voice intro{(mediaRequirement === "audio" || mediaRequirement === "both") && <span style={{ color: T.rec }}> *</span>}</Slate>
+                  <Recorder mode="voice" saved={p.voice?.url} onSave={set("voice")} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <Slate>Video presentation{(mediaRequirement === "video" || mediaRequirement === "both") && <span style={{ color: T.rec }}> *</span>}</Slate>
+                  <Recorder mode="video" saved={p.video?.url} onSave={set("video")} />
+                </div>
               </>
             )}
 
@@ -327,6 +437,7 @@ export default function App() {
                 <div style={{ fontFamily: font.mono, fontSize: 12.5, lineHeight: 2, color: T.inkSoft, background: T.paper, borderRadius: 10, padding: 16 }}>
                   PUBLIC NAME — {p.name ? anon(p.name) : "—"} (full name unlocks after employer pays)<br />
                   HEADLINE — {p.headline || "—"}<br />
+                  PROFESSIONAL ROLE — {p.professionalRole === OTHER_ROLE ? (p.otherPosition || "—") : (p.professionalRole || "—")} ({mediaRequirementLabel(mediaRequirement)})<br />
                   CONTACT — hidden until unlock<br />
                   LOCATION — {[p.neighbourhood, p.city, p.province, p.country].filter(Boolean).join(", ") || "—"}<br />
                   RESUME — {p.resumeFile ? "✓ private until unlock" : "missing"}<br />
