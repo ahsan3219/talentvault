@@ -172,6 +172,7 @@ export default function App() {
         p.video?.blob ? uploadMedia(user.uid, "video", p.video.blob) : Promise.resolve(p.video?.url || null),
         p.resumeFile ? uploadMedia(user.uid, "resume", p.resumeFile) : Promise.resolve(null),
       ]);
+      const displayRole = p.professionalRole === OTHER_ROLE ? p.otherPosition.trim() : p.professionalRole;
       const pub = {
         anonName: anon(p.name), verified: p.verified, headline: p.headline, professionalRole: p.professionalRole, mediaRequirement,
         skills: p.skills.split(",").map((s) => s.trim()).filter(Boolean),
